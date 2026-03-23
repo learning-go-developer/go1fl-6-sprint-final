@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -29,47 +30,52 @@ func GetHTML(w http.ResponseWriter, r *http.Request) {
 //
 // If any step fails, it returns an HTTP 500 Internal Server Error.
 func UploadHandler(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(10 << 20)
+	const maxMultipartSize = 10 << 20
+	err := r.ParseMultipartForm(maxMultipartSize)
 	if err != nil {
-		http.Error(w, "form parsing error", http.StatusInternalServerError)
+		http.Error(w, "form parsing error", http.StatusBadRequest)
 		return
 	}
 
 	file, header, err := r.FormFile("myFile")
 	if err != nil {
-		http.Error(w, "failed to get file", http.StatusInternalServerError)
+		http.Error(w, "failed to get file: field 'myFile' is missing", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
 	fileBytes, err := io.ReadAll(file)
 	if err != nil {
-		http.Error(w, "error reading file", http.StatusInternalServerError)
+		log.Printf("error reading uploaded file: %v", err)
+		http.Error(w, "internal server error during file reading", http.StatusInternalServerError)
 		return
 	}
 
 	result, err := service.DetectedMorse(string(fileBytes))
 	if err != nil {
+		log.Printf("conversion error for file %s: %v", header.Filename, err)
 		http.Error(w, "conversion error", http.StatusInternalServerError)
 		return
 	}
 
 	ext := filepath.Ext(header.Filename)
-	outFileName := fmt.Sprintf("%s%s", time.Now().UTC().String(), ext)
+	outFileName := fmt.Sprintf("%d_%d%s", time.Now().Unix(), time.Now().Nanosecond(), ext)
 
 	outFile, err := os.Create(outFileName)
 	if err != nil {
-		http.Error(w, "failed to create file", http.StatusInternalServerError)
+		log.Printf("failed to create file %s: %v", outFileName, err)
+		http.Error(w, "failed to save result", http.StatusInternalServerError)
 		return
 	}
 	defer outFile.Close()
 
-	_, err = outFile.WriteString(result)
-	if err != nil {
+	if _, err = outFile.WriteString(result); err != nil {
+		log.Printf("failed to write result to file %s: %v", outFileName, err)
 		http.Error(w, "recording error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(result))
 }
