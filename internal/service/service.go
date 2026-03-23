@@ -21,8 +21,8 @@ func DetectedMorse(input string) (string, error) {
 	}
 
 	if len(strings.TrimLeft(input, ".- ")) == 0 {
-		return morse.ToText(input), nil // get text from morse
+		return morse.ToText(input), nil
 	}
 
-	return morse.ToMorse(input), nil // get morse from text
+	return morse.ToMorse(input), nil
 }
